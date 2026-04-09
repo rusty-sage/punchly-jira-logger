@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Punchly Reporter",
+  "version": "1.0.0",
+  "description": "Summarize today's Punchly time entries into a formatted daily work report.",
+  "permissions": ["storage", "clipboardWrite"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Punchly Reporter"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.punchly.work/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
