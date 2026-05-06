@@ -135,6 +135,12 @@
   min-height: 0;
 }
 
+.punchly-reporter-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .punchly-reporter-project-row,
 .punchly-reporter-task-row {
   display: flex;
@@ -184,7 +190,7 @@
   border-radius: 6px;
   border: 1px solid #ccc;
   background: #fff;
-  max-width: 140px;
+  max-width: 180px;
 }
 
 .punchly-reporter-copy-wrap {
@@ -218,4 +224,57 @@
   text-align: center;
   color: #666;
   padding: 24px 12px;
+}
+
+/* Jira link badge — injected next to task title spans on the page */
+.punchly-reporter-jira-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 1px 6px !important;
+  margin-right: 5px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  color: #0052cc !important;
+  background: #deebff !important;
+  border: 1px solid #b3d4ff !important;
+  border-radius: 4px !important;
+  text-decoration: none !important;
+  line-height: 1.4 !important;
+  cursor: pointer !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+
+.punchly-reporter-jira-link:hover {
+  background: #0052cc !important;
+  color: #fff !important;
+  border-color: #0052cc !important;
+}
+
+/* Jira link inside the floating report card */
+.punchly-reporter-card-jira-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0052cc;
+  background: #deebff;
+  border: 1px solid #b3d4ff;
+  border-radius: 4px;
+  text-decoration: none;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.punchly-reporter-card-jira-link:hover {
+  background: #0052cc;
+  color: #fff;
+  border-color: #0052cc;
 }

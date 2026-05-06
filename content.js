@@ -2,13 +2,15 @@
   "use strict";
 
   const BTN_CLASS = "punchly-reporter-summarize-btn";
+  const JIRA_LINK_CLASS = "punchly-reporter-jira-link";
+  const JIRA_BASE = "https://aipxperts.atlassian.net/browse/";
   const SEP = " • ";
 
   /** Captured from app.punchly.work/en/time-tracker — may shift if layout changes. */
   const XP_TOTAL =
-    "/html/body/div[2]/div/main/div/div[3]/div[1]/div[2]/div[1]/div[1]/div[2]";
+    "/html/body/div[2]/div/main/div/div[3]/div[2]/div/div[1]/div[2]/div[1]/div[1]/div[2]";
   const XP_TODAY_TASKS =
-    "/html/body/div[2]/div/main/div/div[3]/div[1]/div[2]/div[1]/div[2]";
+    "/html/body/div[2]/div/main/div/div[3]/div[2]/div/div[1]/div[2]/div[1]/div[2]/div[1]";
 
   function byXPath(xpath) {
     return document.evaluate(
@@ -79,6 +81,48 @@
     return `${h}h ${String(m).padStart(2, "0")}min`;
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function reportSectionHtml(title, items) {
+    if (!items.length) return "";
+    const lis = items
+      .map((x) => `<li>${escapeHtml(x.task)} [${escapeHtml(x.time)}]</li>`)
+      .join("");
+    return `<p><strong>${escapeHtml(title)}</strong></p><ul>${lis}</ul>`;
+  }
+
+  function reportSectionPlain(title, items) {
+    if (!items.length) return "";
+    let out = `${title}\r\n`;
+    for (const x of items) {
+      out += `• ${x.task} [${x.time}]\r\n`;
+    }
+    return `${out}\r\n`;
+  }
+
+  async function copyRichReport(html, plain) {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([plain], { type: "text/plain" }),
+          }),
+        ]);
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    await navigator.clipboard.writeText(plain);
+  }
+
   function parseLabelAndTime(labelText, timeStr) {
     if (!labelText || !timeStr) return null;
     const m = timeStr.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
@@ -100,7 +144,8 @@
   }
 
   function rowLabelAndTimeElements(row) {
-    let labelEl = row.querySelector("div:nth-child(3) button div span");
+    let labelEl = row.querySelector("div:nth-child(3) button div span[data-jira-id]") ||
+                  row.querySelector("div:nth-child(3) button div span");
     let timeEl = row.querySelector("div:nth-child(5) span");
     if (labelEl && timeEl) return { labelEl, timeEl };
 
@@ -121,9 +166,35 @@
       const labelText = labelEl?.textContent?.trim();
       const timeStr = timeEl?.textContent?.trim();
       const parsed = parseLabelAndTime(labelText, timeStr);
-      if (parsed) tasks.push(parsed);
+      if (parsed) {
+        parsed.jiraId = labelEl?.dataset?.jiraId || null;
+        tasks.push(parsed);
+      }
     }
     return tasks;
+  }
+
+  /** Inject a "Jira" link badge directly next to the task title span on the page. */
+  function injectJiraLinks() {
+    const spans = document.querySelectorAll(`span[data-jira-id]`);
+    for (const span of spans) {
+      const jiraId = span.dataset.jiraId;
+      if (!jiraId) continue;
+      // Avoid double-injection
+      if (span.previousElementSibling?.classList?.contains(JIRA_LINK_CLASS)) continue;
+
+      const link = document.createElement("a");
+      link.href = `${JIRA_BASE}${jiraId}`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.className = JIRA_LINK_CLASS;
+      link.textContent = "Jira";
+      link.title = `Open ${jiraId} in Jira`;
+      link.addEventListener("click", (e) => e.stopPropagation());
+
+      const parent = span.parentNode;
+      if (parent) parent.insertBefore(link, span);
+    }
   }
 
   function groupByProject(tasks) {
@@ -182,6 +253,7 @@
 
     cleanupOrphanButtons(totalEl.parentNode);
     injectSummarizeButton(totalEl);
+    injectJiraLinks();
   }
 
   function scheduleTryInject() {
@@ -346,13 +418,30 @@
     const body = document.createElement("div");
     body.className = "punchly-reporter-card-body";
 
+    const taskList = document.createElement("ul");
+    taskList.className = "punchly-reporter-task-list";
+
     state.forEach((item, idx) => {
-      const row = document.createElement("div");
+      const row = document.createElement("li");
       row.className = "punchly-reporter-task-row";
 
       const nameEl = document.createElement("span");
       nameEl.className = "punchly-reporter-task-name";
       nameEl.textContent = item.task;
+
+      // Jira link in the card
+      if (item.jiraId) {
+        const jiraLink = document.createElement("a");
+        jiraLink.href = `${JIRA_BASE}${item.jiraId}`;
+        jiraLink.target = "_blank";
+        jiraLink.rel = "noopener noreferrer";
+        jiraLink.className = "punchly-reporter-card-jira-link";
+        jiraLink.textContent = "Jira";
+        jiraLink.title = `Open ${item.jiraId} in Jira`;
+        row.appendChild(jiraLink);
+      }
+
+      row.appendChild(nameEl);
 
       const timeEl = document.createElement("span");
       timeEl.className = "punchly-reporter-task-time";
@@ -368,19 +457,24 @@
       const optProg = document.createElement("option");
       optProg.value = "progress";
       optProg.textContent = "🟡 In Progress";
-      optProg.selected = true;
+      const optPending = document.createElement("option");
+      optPending.value = "pending";
+      optPending.textContent = "⏸️ Pending / Blocker";
       sel.appendChild(optDone);
       sel.appendChild(optProg);
+      sel.appendChild(optPending);
+      sel.value = state[idx].status;
       sel.addEventListener("change", () => {
         state[idx].status = sel.value;
       });
       wrap.appendChild(sel);
 
-      row.appendChild(nameEl);
       row.appendChild(timeEl);
       row.appendChild(wrap);
-      body.appendChild(row);
+      taskList.appendChild(row);
     });
+
+    body.appendChild(taskList);
 
     const copyWrap = document.createElement("div");
     copyWrap.className = "punchly-reporter-copy-wrap";
@@ -407,33 +501,24 @@
 
         const completed = state.filter((s) => s.status === "completed");
         const inProg = state.filter((s) => s.status === "progress");
+        const pending = state.filter((s) => s.status === "pending");
 
-        let msg = "";
-        msg += `Daily Work Report – ${dateStr}\r\n`;
-        msg += `Name: ${userName}\r\n`;
-        msg += `Project: ${projectName}\r\n`;
-        msg += `\r\n`;
+        const headerPlain = `Daily Work Report – ${dateStr}\r\nName: ${userName}\r\nProject: ${projectName}\r\n\r\n`;
+        let plain = headerPlain;
+        plain += reportSectionPlain("✅ Completed", completed);
+        plain += reportSectionPlain("🟡 In Progress", inProg);
+        plain += reportSectionPlain("⏸️ Pending / Blocker", pending);
+        plain += `Total Hours: ${totalLine}`;
 
-        if (completed.length > 0) {
-          msg += `✅ Completed\r\n`;
-          completed.forEach((s) => {
-            msg += `- ${s.task} [${s.time}]\r\n`;
-          });
-          msg += `\r\n`;
-        }
-
-        if (inProg.length > 0) {
-          msg += `🟡 In Progress\r\n`;
-          inProg.forEach((s) => {
-            msg += `- ${s.task} [${s.time}]\r\n`;
-          });
-          msg += `\r\n`;
-        }
-
-        msg += `Total Hours: ${totalLine}`;
+        const headerHtml = `<p><strong>Daily Work Report</strong> – ${escapeHtml(dateStr)}</p><p>Name: ${escapeHtml(userName)}</p><p>Project: ${escapeHtml(projectName)}</p>`;
+        const sectionsHtml =
+          reportSectionHtml("✅ Completed", completed) +
+          reportSectionHtml("🟡 In Progress", inProg) +
+          reportSectionHtml("⏸️ Pending / Blocker", pending);
+        const html = `<meta charset="utf-8"><div style="font-family:Segoe UI,sans-serif;font-size:14px">${headerHtml}${sectionsHtml}<p><strong>Total Hours:</strong> ${escapeHtml(totalLine)}</p></div>`;
 
         try {
-          await navigator.clipboard.writeText(msg);
+          await copyRichReport(html, plain);
           closeCard(card.closest("#punchly-reporter-backdrop"));
         } catch {
           copyBtn.textContent = "Copy failed";
